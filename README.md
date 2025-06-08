@@ -1,6 +1,6 @@
 ---
 
-## 🕸️ Mongoose Web Server Builder for OpenWrt ARM64
+### Mongoose Web Server Builder for OpenWrt ARM64
 
 Skrip bash otomatis untuk mengunduh SDK, membangun paket Mongoose Web Server (`.ipk`), dan memasangnya ke sistem OpenWrt berbasis ARM64.
 

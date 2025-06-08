@@ -10,12 +10,20 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # ========== Default Config ==========
-SDK_URL="https://downloads.openwrt.org/releases/24.10.0/targets/armsr/armv8/openwrt-sdk-24.10.0-armsr-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
-SDK_ARCHIVE="openwrt-sdk.tar.zst"
-SDK_DIR="openwrt-sdk"
+SDK_VERSION="24.10.0"
+SDK_TARGET1="armsr"
+SDK_TARGET2="armv8"
+SDK_ARCH="aarch64_generic"
+SDK_FILENAME="openwrt-sdk-${SDK_VERSION}-${SDK_TARGET1}-${SDK_TARGET2}_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+SDK_URL="https://downloads.openwrt.org/releases/${SDK_VERSION}/targets/${SDK_TARGET1}/${SDK_TARGET2}/${SDK_FILENAME}"
+
+SDK_ARCHIVE="${SDK_FILENAME}"
+
+WORKDIR=$(pwd)
+SDK_DIR="$WORKDIR/openwrt-sdk"
 PKG_NAME="mongoose"
 PKG_VERSION="7.12"
-PORT="27017"
+PORTT="27017"
 WEBROOT="/www"
 
 # ========== Fungsi Bantuan ==========
@@ -24,7 +32,7 @@ usage() {
   echo -e "  -d         Download SDK (jika belum ada)"
   echo -e "  -b         Build mongoose package"
   echo -e "  -i         Install dependencies"
-  echo -e "  -p <port>  Port server (default: 27017)"
+  echo -e "  -p <PORT>  PORT server (default: 27017)"
   echo -e "  -r <path>  Web root directory (default: /www)"
   echo -e "  -h         Tampilkan bantuan"
   exit 1
@@ -58,37 +66,39 @@ fi
 if $DO_DOWNLOAD; then
   if [ ! -f "$SDK_ARCHIVE" ]; then
     echo -e "${BLUE}>> Mengunduh OpenWrt SDK...${NC}"
-    wget -O "$SDK_ARCHIVE" "$SDK_URL"
+    echo -e "${BLUE}>> wget "$SDK_URL" -O "$SDK_ARCHIVE"${NC}"
+    wget "$SDK_URL" -O "$SDK_ARCHIVE"
   else
-    echo -e "${GREEN}>> SDK sudah ada. Melewati download.${NC}"
+    echo -e "${GREEN}>> SDK sudah tersedia di lokal.${NC}"
   fi
 
   if [ ! -d "$SDK_DIR" ]; then
     echo -e "${BLUE}>> Mengekstrak SDK...${NC}"
     mkdir -p "$SDK_DIR"
-    tar -I zstd -xvf "$SDK_ARCHIVE" -C "$SDK_DIR" --strip-components=1
+    tar --use-compress-program=zstd -xvf "$SDK_ARCHIVE" -C "$SDK_DIR" --strip-components=1
   else
-    echo -e "${GREEN}>> Direktori SDK sudah tersedia.${NC}"
+    echo -e "${GREEN}>> SDK sudah diekstrak.${NC}"
   fi
 fi
 
 # ========== Build Package ==========
 if $DO_BUILD; then
-  cd "$SDK_DIR"
+  echo -e "${BLUE}>> Menyiapkan package ${PKG_NAME}...${NC}"
 
-  echo -e "${BLUE}>> Menyiapkan direktori package...${NC}"
-  mkdir -p package/$PKG_NAME/src
-  cd package/$PKG_NAME/src
+  PKG_PATH="$SDK_DIR/package/$PKG_NAME"
+  SRC_PATH="$PKG_PATH/src"
 
-  # Unduh mongoose.c dan .h jika belum ada
+  mkdir -p "$SRC_PATH"
+
+  cd "$SRC_PATH"
   [ -f mongoose.c ] || wget https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c
   [ -f mongoose.h ] || wget https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h
 
-  # Tulis main.c dinamis
+  echo -e "${BLUE}>> Membuat main.c...${NC}"
   cat > main.c <<EOF
 #include "mongoose.h"
 
-static const char *s_listen_on = "http://0.0.0.0:$PORT";
+static const char *s_listen_on = "http://0.0.0.0:$PORTT";
 static const char *s_web_root = "$WEBROOT";
 
 static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
@@ -109,9 +119,8 @@ int main(void) {
 }
 EOF
 
-  cd ..
-  # Tulis Makefile jika belum ada
-  cat > Makefile <<EOF
+  echo -e "${BLUE}>> Menulis Makefile...${NC}"
+  cat > "$PKG_PATH/Makefile" <<EOF
 include \$(TOPDIR)/rules.mk
 
 PKG_NAME:=${PKG_NAME}
@@ -150,10 +159,12 @@ endef
 \$(eval \$(call BuildPackage,${PKG_NAME}))
 EOF
 
-  echo -e "${BLUE}>> Memulai proses build...${NC}"
-  make package/$PKG_NAME/clean
-  make package/$PKG_NAME/compile V=s
+  echo -e "${BLUE}>> Memulai proses build dengan make...${NC}"
+  cd "$SDK_DIR"
+  echo $(pwd)
+  # make package/${PKG_NAME}/clean
+  make package/${PKG_NAME}/compile V=s
 
-  echo -e "${GREEN}✅ Build selesai. File ipk berada di:${NC}"
-  find bin/ -name "${PKG_NAME}_*aarch64_generic.ipk"
+  echo -e "${GREEN}✅ Build selesai. File IPK berada di:${NC}"
+  find bin/packages/ -name "${PKG_NAME}_*_${SDK_ARCH}.ipk"
 fi
