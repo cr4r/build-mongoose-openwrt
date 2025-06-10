@@ -9,6 +9,16 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Cek apakah OS adalah Linux
+if [[ "$(uname -s)" == "Linux" ]]; then
+    echo "✅ Cek sistem. memenuhi syarat"
+else
+    echo "❌ Script ini hanya untuk sistem operasi Linux."
+    # Bisa exit atau skip
+    exit 1
+fi
+
+
 # ========== Default Config ==========
 SDK_VERSION="24.10.0"
 SDK_TARGET1="armsr"
@@ -24,7 +34,7 @@ SDK_DIR="$WORKDIR/openwrt-sdk"
 PKG_NAME="mongoose"
 PKG_VERSION="7.12"
 PORTT="27017"
-WEBROOT="/www"
+WEBROOT="/www/mongoose.json"
 
 # ========== Fungsi Bantuan ==========
 usage() {
@@ -98,8 +108,8 @@ if $DO_BUILD; then
   cat > main.c <<EOF
 #include "mongoose.h"
 
-static const char *s_listen_on = "http://0.0.0.0:$PORTT";
-static const char *s_web_root = "$WEBROOT";
+static char s_listen_on[64];
+static char s_web_root[256];
 
 static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
   if (ev == MG_EV_HTTP_MSG) {
@@ -109,10 +119,28 @@ static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
   (void) fn_data;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+  // Ambil dari ENV (variabel lingkungan)
+  const char *port_env = getenv("PORT");
+  const char *webroot_env = getenv("WEBROOT");
+
+  snprintf(s_listen_on, sizeof(s_listen_on), "http://0.0.0.0:%s", port_env ? port_env : "${PORTT}");
+  snprintf(s_web_root, sizeof(s_web_root), "%s", webroot_env ? webroot_env : "${WEBROOT}");
+
+  // Jika ada argumen langsung
+  if (argc > 1) snprintf(s_listen_on, sizeof(s_listen_on), "http://0.0.0.0:%s", argv[1]);
+  if (argc > 2) snprintf(s_web_root, sizeof(s_web_root), "%s", argv[2]);
+
+  printf("🟢 Server start on: %s\n", s_listen_on);
+  printf("📁 Serving from: %s\n", s_web_root);
+
   struct mg_mgr mgr;
   mg_mgr_init(&mgr);
-  mg_http_listen(&mgr, s_listen_on, fn, &mgr);
+  if (mg_http_listen(&mgr, s_listen_on, fn, &mgr) == NULL) {
+    fprintf(stderr, "❌ Error starting server on %s\n", s_listen_on);
+    return 1;
+  }
+
   for (;;) mg_mgr_poll(&mgr, 1000);
   mg_mgr_free(&mgr);
   return 0;
@@ -124,7 +152,7 @@ EOF
 include \$(TOPDIR)/rules.mk
 
 PKG_NAME:=${PKG_NAME}
-PKG_VERSION:=${PKG_VERSION}
+PKG_VERSION:=7.12
 PKG_RELEASE:=1
 
 include \$(INCLUDE_DIR)/package.mk
@@ -133,38 +161,61 @@ define Package/${PKG_NAME}
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Mongoose Embedded Web Server
+  DEPENDS:=+libsqlite3
 endef
 
 define Package/${PKG_NAME}/description
   Mongoose is a simple embedded web server in a single C file.
+  This version includes SQLite3 database support.
 endef
 
 define Build/Prepare
 	mkdir -p \$(PKG_BUILD_DIR)
-	cp ./src/mongoose.c \$(PKG_BUILD_DIR)/
-	cp ./src/mongoose.h \$(PKG_BUILD_DIR)/
+	cp ./src/${PKG_NAME}.c \$(PKG_BUILD_DIR)/
+	cp ./src/${PKG_NAME}.h \$(PKG_BUILD_DIR)/
 	cp ./src/main.c \$(PKG_BUILD_DIR)/
 endef
 
 define Build/Compile
 	\$(TARGET_CC) \$(TARGET_CFLAGS) -I\$(PKG_BUILD_DIR) \\
-	  \$(PKG_BUILD_DIR)/main.c \$(PKG_BUILD_DIR)/mongoose.c -o \$(PKG_BUILD_DIR)/mongoose
+	  \$(PKG_BUILD_DIR)/main.c \$(PKG_BUILD_DIR)/${PKG_NAME}.c \\
+	  -lsqlite3 \\
+	  -o \$(PKG_BUILD_DIR)/${PKG_NAME}
 endef
 
 define Package/${PKG_NAME}/install
 	\$(INSTALL_DIR) \$(1)/usr/bin
-	\$(INSTALL_BIN) \$(PKG_BUILD_DIR)/mongoose \$(1)/usr/bin/
+	\$(INSTALL_BIN) \$(PKG_BUILD_DIR)/${PKG_NAME} \$(1)/usr/bin/
 endef
 
 \$(eval \$(call BuildPackage,${PKG_NAME}))
+
 EOF
+
 
   echo -e "${BLUE}>> Memulai proses build dengan make...${NC}"
   cd "$SDK_DIR"
-  echo $(pwd)
-  # make package/${PKG_NAME}/clean
+  echo "CONFIG_PACKAGE_mongoose=y" >> .config
+  ### Mulai mem build
+  # echo "src-git packages https://github.com/openwrt/packages" >> feeds.conf.default
+  make package/${PKG_NAME}/clean
+  ./scripts/feeds update -a
+  ./scripts/feeds install libsqlite3
   make package/${PKG_NAME}/compile V=s
 
   echo -e "${GREEN}✅ Build selesai. File IPK berada di:${NC}"
   find bin/packages/ -name "${PKG_NAME}_*_${SDK_ARCH}.ipk"
+
+fi
+
+# ========== Tampilkan Konfigurasi Default jika tidak ada argumen ==========
+if ! $DO_DOWNLOAD && ! $DO_BUILD && ! $DO_INSTALL; then
+  echo -e "${YELLOW}⚙️  Konfigurasi Build Mongoose:${NC}"
+  echo -e "${GREEN}SDK Version     :${NC} $SDK_VERSION"
+  echo -e "${GREEN}Target          :${NC} $SDK_TARGET1/$SDK_TARGET2"
+  echo -e "${GREEN}Architecture    :${NC} $SDK_ARCH"
+  echo -e "${GREEN}SDK Archive     :${NC} $SDK_FILENAME"
+  echo -e "${GREEN}Web Port        :${NC} $PORTT"
+  echo -e "${GREEN}Web Root        :${NC} $WEBROOT"
+  echo -e "${YELLOW}Gunakan -h untuk opsi bantuan lengkap.${NC}"
 fi

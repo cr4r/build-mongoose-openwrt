@@ -1,0 +1,62 @@
+######### Backup makefile
+# include \$(TOPDIR)/rules.mk
+
+# PKG_NAME:=${PKG_NAME}
+# PKG_VERSION:=${PKG_VERSION}
+# PKG_RELEASE:=1
+
+# include \$(INCLUDE_DIR)/package.mk
+
+# define Package/${PKG_NAME}
+#   SECTION:=net
+#   CATEGORY:=Network
+#   TITLE:=Mongoose Embedded Web Server
+# endef
+
+# define Package/${PKG_NAME}/description
+#   Mongoose is a simple embedded web server in a single C file.
+# endef
+
+# define Build/Prepare
+# 	mkdir -p \$(PKG_BUILD_DIR)
+# 	cp ./src/mongoose.c \$(PKG_BUILD_DIR)/
+# 	cp ./src/mongoose.h \$(PKG_BUILD_DIR)/
+# 	cp ./src/main.c \$(PKG_BUILD_DIR)/
+# endef
+
+# define Build/Compile
+# 	\$(TARGET_CC) \$(TARGET_CFLAGS) -I\$(PKG_BUILD_DIR) \\
+# 	  \$(PKG_BUILD_DIR)/main.c \$(PKG_BUILD_DIR)/mongoose.c -o \$(PKG_BUILD_DIR)/mongoose
+# endef
+
+# define Package/${PKG_NAME}/install
+# 	\$(INSTALL_DIR) \$(1)/usr/bin
+# 	\$(INSTALL_BIN) \$(PKG_BUILD_DIR)/mongoose \$(1)/usr/bin/
+# endef
+
+# \$(eval \$(call BuildPackage,${PKG_NAME}))
+#####################
+
+
+################ INI MAIN.C
+# #include "mongoose.h"
+
+# static const char *s_listen_on = "http://0.0.0.0:$PORTT";
+# static const char *s_web_root = "$WEBROOT";
+
+# static void fn(struct mg_connection *c, int ev, void *ev_data, void *fn_data) {
+#   if (ev == MG_EV_HTTP_MSG) {
+#     struct mg_http_message *hm = (struct mg_http_message *) ev_data;
+#     mg_http_serve_dir(c, hm, s_web_root);
+#   }
+#   (void) fn_data;
+# }
+
+# int main(void) {
+#   struct mg_mgr mgr;
+#   mg_mgr_init(&mgr);
+#   mg_http_listen(&mgr, s_listen_on, fn, &mgr);
+#   for (;;) mg_mgr_poll(&mgr, 1000);
+#   mg_mgr_free(&mgr);
+#   return 0;
+# } 
